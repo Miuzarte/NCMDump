@@ -26,33 +26,33 @@ type Dumper struct {
 }
 
 type MetaData struct {
-	MusicId       string     `json:"musicId"`
-	MusicName     string     `json:"musicName"`
-	Artist        [][]string `json:"artist"`
-	AlbumId       string     `json:"albumId"`
-	Album         string     `json:"album"`
-	AlbumPicDocId string     `json:"albumPicDocId"`
-	AlbumPic      string     `json:"albumPic"`
-	Bitrate       int        `json:"bitrate"`
-	Mp3DocId      string     `json:"mp3DocId"`
-	Duration      int        `json:"duration"`
-	MvId          string     `json:"mvId"`
-	Alias         []string   `json:"alias"`
-	TransNames    []string   `json:"transNames"`
-	Format        string     `json:"format"`
-	Fee           int        `json:"fee"`
-	VolumeDelta   float64    `json:"volumeDelta"`
-	Privilege     struct {
-		Flag int `json:"flag"`
-	} `json:"privilege"`
+	// MusicId       string     `json:"musicId"`
+	MusicName string  `json:"musicName"`
+	Artist    [][]any `json:"artist"` // [0][0] string artistName, [0][1] int artistId
+	// AlbumId       string     `json:"albumId"`
+	// Album         string     `json:"album"`
+	// AlbumPicDocId string     `json:"albumPicDocId"`
+	AlbumPic string `json:"albumPic"`
+	Bitrate  int    `json:"bitrate"`
+	// Mp3DocId      string     `json:"mp3DocId"`
+	// Duration      int        `json:"duration"`
+	// MvId          string     `json:"mvId"`
+	// Alias         []string   `json:"alias"`
+	// TransNames    []string   `json:"transNames"`
+	Format string `json:"format"`
+	// Fee         int     `json:"fee"`
+	// VolumeDelta float64 `json:"volumeDelta"`
+	// Privilege struct {
+	// 	Flag int `json:"flag"`
+	// } `json:"privilege"`
 }
 
 const (
-	ncmHeader = "4354454e4644414d"
+	NCM_HEADER = "4354454e4644414d"
 )
 
 var (
-	header, _ = hex.DecodeString(ncmHeader)
+	ncmHeader, _ = hex.DecodeString(NCM_HEADER)
 )
 
 func New() *Dumper {
@@ -152,8 +152,8 @@ func decrypt(cb cipher.Block, input []byte) (output []byte, err error) {
 	return
 }
 
-func checkHeader(ncmHeader []byte) bool {
-	return bytes.Equal(ncmHeader, header)
+func checkHeader(header []byte) bool {
+	return bytes.Equal(header, ncmHeader)
 }
 
 func (d *Dumper) decryptCore(raw []byte) (output []byte, err error) {
@@ -300,7 +300,7 @@ func (d *Dumper) Dump(src, dst *bytes.Buffer) (metaData *MetaData, err error) {
 	}
 
 	if len(coverData) != 0 && d.isCoverOutput { // 非嵌入不影响音频导出，但方法还是会返回错误
-		if err = d.outputCoverLocal(coverData, metaData.Artist[0][0]+" - "+metaData.MusicName); err != nil {
+		if err = d.outputCoverLocal(coverData, fmt.Sprint(metaData.Artist[0][0], " - ", metaData.MusicName)); err != nil {
 			return nil, err
 		}
 	}
@@ -313,16 +313,20 @@ func (d *Dumper) DumpFile(inputPath string) (err error) {
 
 	ncmF, err := os.Open(inputPath)
 	if err != nil {
-		return fmt.Errorf("(%v) failed to open file: %v",
-			inputPath, err)
+		return fmt.Errorf(
+			"(%v) failed to open file: %v",
+			inputPath, err,
+		)
 	}
 	defer ncmF.Close()
 
 	ncmHeader := make([]byte, 8)
 	ncmF.Read(ncmHeader) // 43 54 45 4e 46 44 41 4d
 	if !checkHeader(ncmHeader) {
-		return fmt.Errorf("(%v) unmatched header, not a NCM file",
-			inputPath)
+		return fmt.Errorf(
+			"(%v) unmatched header, not a NCM file",
+			inputPath,
+		)
 	}
 
 	ncmF.Seek(2, 1)
@@ -334,8 +338,10 @@ func (d *Dumper) DumpFile(inputPath string) (err error) {
 	ncmF.Read(keyDataRaw)
 	keyData, err := d.decryptCore(keyDataRaw)
 	if err != nil {
-		return fmt.Errorf("(%v) failed to decrypt key data: %v",
-			inputPath, err)
+		return fmt.Errorf(
+			"(%v) failed to decrypt key data: %v",
+			inputPath, err,
+		)
 	}
 	keyBox := genKeyBox(keyData)
 
@@ -346,13 +352,17 @@ func (d *Dumper) DumpFile(inputPath string) (err error) {
 	ncmF.Read(metaDataRaw)
 	metaDataBytes, err := d.decryptMeta(metaDataRaw)
 	if err != nil {
-		return fmt.Errorf("(%v) failed to decrypt meta data: %v",
-			inputPath, err)
+		return fmt.Errorf(
+			"(%v) failed to decrypt meta data: %v",
+			inputPath, err,
+		)
 	}
 	metaData, err := unmarshalMeta(metaDataBytes)
 	if err != nil {
-		return fmt.Errorf("(%v) failed to unmarshal meta data: %v",
-			inputPath, err)
+		return fmt.Errorf(
+			"(%v) failed to unmarshal meta data: %v",
+			inputPath, err,
+		)
 	}
 
 	c32Raw := make([]byte, 4)
@@ -374,7 +384,7 @@ func (d *Dumper) DumpFile(inputPath string) (err error) {
 			return fmt.Errorf("failed to download HD cover: %v", err)
 		}
 		defer resp.Body.Close()
-		coverData, err = io.ReadAll(resp.Body)
+		coverData, _ = io.ReadAll(resp.Body)
 	}
 
 	var outputDir string
@@ -387,34 +397,44 @@ func (d *Dumper) DumpFile(inputPath string) (err error) {
 	outputPath := filepath.Join(outputDir, fileName)
 	_, err = os.Stat(outputPath)
 	if !os.IsNotExist(err) { // exist
-		return fmt.Errorf("(%v) found existed output, skip",
-			fileName)
+		return fmt.Errorf(
+			"(%v) found existed output, skip",
+			fileName,
+		)
 	}
 	output, err := os.Create(outputPath)
 	if err != nil {
-		return fmt.Errorf("(%v) failed to create file: %v",
-			fileName, err)
+		return fmt.Errorf(
+			"(%v) failed to create file: %v",
+			fileName, err,
+		)
 	}
 	defer output.Close()
 	music, err := io.ReadAll(ncmF)
 	if err != nil {
-		return fmt.Errorf("(%v) failed to read music data: %v",
-			fileName, err)
+		return fmt.Errorf(
+			"(%v) failed to read music data: %v",
+			fileName, err,
+		)
 	}
 	decryptMusic(music, keyBox)
 
 	if len(coverData) != 0 && d.isCoverEmbed { // 嵌入失败中断导出
 		music, err = ffmpegAttachPic(music, coverData, metaData.Format)
 		if err != nil {
-			return fmt.Errorf("(%v) failed to embed cover: %v",
-				fileName, err)
+			return fmt.Errorf(
+				"(%v) failed to embed cover: %v",
+				fileName, err,
+			)
 		}
 	}
 
 	_, err = output.Write(music)
 	if err != nil {
-		return fmt.Errorf("(%v) failed to write output: %v",
-			fileName, err)
+		return fmt.Errorf(
+			"(%v) failed to write output: %v",
+			fileName, err,
+		)
 	}
 
 	if len(coverData) != 0 && d.isCoverOutput { // 非嵌入不影响音频导出
@@ -427,29 +447,39 @@ func (d *Dumper) DumpFile(inputPath string) (err error) {
 }
 
 func (d *Dumper) outputCoverLocal(image []byte, musicName string) error {
-	coverPath := filepath.Join(d.outputDir, musicName+
-		func() string {
-			switch {
-			case bytes.Equal(image[0:8],
-				[]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}):
-				return ".png"
-			case bytes.Equal(image[0:2],
-				[]byte{0xFF, 0xD8}):
-				return ".jpg"
-			default:
-				return ""
-			}
-		}())
+	coverPath := filepath.Join(
+		d.outputDir, musicName+
+			func() string {
+				switch {
+				case bytes.Equal(
+					image[0:8],
+					[]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A},
+				):
+					return ".png"
+				case bytes.Equal(
+					image[0:2],
+					[]byte{0xFF, 0xD8},
+				):
+					return ".jpg"
+				default:
+					return ""
+				}
+			}(),
+	)
 	cover, err := os.Create(coverPath)
 	defer cover.Close()
 	if err != nil {
-		return fmt.Errorf("(%v) failed to output cover: %v",
-			coverPath, err)
+		return fmt.Errorf(
+			"(%v) failed to output cover: %v",
+			coverPath, err,
+		)
 	}
 	_, err = cover.Write(image)
 	if err != nil {
-		return fmt.Errorf("(%v) failed to write cover data: %v",
-			coverPath, err)
+		return fmt.Errorf(
+			"(%v) failed to write cover data: %v",
+			coverPath, err,
+		)
 	}
 	return nil
 
@@ -480,10 +510,12 @@ func ffmpegAttachPic(media, image []byte, mediaFormat string) ([]byte, error) {
 	coverTemp.Close()
 	defer os.Remove(coverTemp.Name())
 
-	cmd := exec.Command("ffmpeg",
+	cmd := exec.Command(
+		"ffmpeg",
 		"-i", "pipe:0", "-i", coverTemp.Name(),
 		"-map", "0", "-map", "1", "-c", "copy",
-		"-disposition:v:0", "attached_pic", "-f", mediaFormat, "pipe:1")
+		"-disposition:v:0", "attached_pic", "-f", mediaFormat, "pipe:1",
+	)
 	cmd.Stdin = bytes.NewReader(media)
 	output, err := cmd.Output()
 	if err != nil {
